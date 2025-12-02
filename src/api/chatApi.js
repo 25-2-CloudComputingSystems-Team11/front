@@ -1,49 +1,33 @@
-import OpenAI from "openai";
-
-const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
-
-if (!apiKey) {
-  throw new Error(
-    "REACT_APP_OPENAI_API_KEY is not set in the environment variables."
-  );
-}
-
-const openai = new OpenAI({
-  apiKey: apiKey,
-  dangerouslyAllowBrowser: true,
-});
+const BACKEND_URL = "http://localhost:30080";
 
 export async function getChatGptResponse(chatHistory, systemPrompt) {
-  const defaultSystemPrompt =
-    "당신은 유능한 AI 어시스턴트입니다. 항상 한국어로 답변해주세요.";
-
-  const messages = [
-    {
-      role: "system",
-      content: systemPrompt || defaultSystemPrompt,
-    },
-    ...chatHistory.map((msg) => ({
-      role: msg.sender === "user" ? "user" : "assistant",
-      content: msg.text
-        .replace(
-          /^(나: |🤖 AI 멘토: |📄 README 봇: |📝 이력서 봇: |🔤 번역 봇: )/,
-          ""
-        )
-        .replace(/^(.*: )/, ""),
-    })),
-  ];
-
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: messages,
-      temperature: 0.8,
-      max_tokens: 1000,
+    // 1. 백엔드(Python)로 요청 전송
+    const response = await fetch(`${BACKEND_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chatHistory: chatHistory,
+        systemPrompt: systemPrompt,
+      }),
     });
 
-    return response.choices[0].message.content.trim();
+    if (!response.ok) {
+      // 백엔드에서 에러 응답 온 경우
+      const errorData = await response.json();
+      throw new Error(
+        errorData.detail || `HTTP error! status: ${response.status}`
+      );
+    }
+
+    // 2. 백엔드 응답 처리
+    const data = await response.json();
+
+    return data.response_text;
   } catch (error) {
-    console.error("ChatGPT API 호출 중 오류 발생:", error);
-    return "죄송합니다. API 호출 중 오류가 발생했습니다. 키를 확인하거나 잠시 후 다시 시도해 주세요.";
+    console.error("백엔드 통신 오류:", error);
+    return "죄송합니다. 서버와 연결할 수 없거나 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
   }
 }
